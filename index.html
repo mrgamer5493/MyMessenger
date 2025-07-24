@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Чат</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+  <style>
+    /* Анимации */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+    @keyframes dots { 0% { content: '.'; } 33% { content: '..'; } 66% { content: '...'; } }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.2); } 100% { transform: scale(1); } }
+    @keyframes checkmarkFade { from { color: #9ca3af; } to { color: #10b981; } }
+
+    /* Стили сообщений */
+    .message { animation: fadeIn 0.3s ease-out; position: relative; }
+    .notification { animation: slideIn 0.3s ease-out; }
+    .typing::after { content: '...'; animation: dots 1.5s infinite; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+    .scroll-to-top { display: none; }
+    #messages:hover .scroll-to-top { display: block; }
+    .message-sender {
+      position: relative;
+      margin-right: 1rem;
+      max-width: 80%;
+    }
+    .message-recipient {
+      position: relative;
+      margin-left: 50px;
+      max-width: 80%;
+    }
+    .message-recipient::before {
+      content: '';
+      position: absolute;
+      top: 10px;
+      left: -10px;
+      border: 5px solid transparent;
+      border-right: 5px solid #e5e7eb;
+      transform: translateX(-100%);
+    }
+    .dark .message-recipient::before {
+      border-right: 5px solid #374151;
+    }
+    .message-sender.image::after,
+    .message-recipient.image::after {
+      content: '';
+      position: absolute;
+      top: 10px;
+      width: 0;
+      height: 0;
+      border-top: 10px solid transparent;
+      border-bottom: 10px solid transparent;
+    }
+    .message-sender.image::after {
+      right: -15px;
+      border-left: 15px solid #3b82f6;
+      transform: translateX(100%);
+    }
+    .message-recipient.image::after {
+      left: -15px;
+      border-right: 15px solid #e5e7eb;
+      transform: translateX(-100%);
+    }
+    .dark .message-recipient.image::after {
+      border-right: 15px solid #374151;
+    }
+    .message-container { display: flex; align-items: flex-start; margin-bottom: 1rem; }
+    .message-container.sender { justify-content: flex-end; }
+    .message-container.recipient { justify-content: flex-start; }
+    .avatar-wrapper { flex-shrink: 0; margin-right: 1rem; }
+    .avatar-wrapper.sender { margin-right: 0; margin-left: 1rem; }
+    .message .time-status {
+      font-size: 0.6rem;
+      color: #e5e7eb;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      margin-left: 4px;
+      margin-top: -2px;
+    }
+    .message-recipient .time-status {
+      position: absolute;
+      bottom: -1.25rem;
+      right: 0;
+      color: #9ca3af;
+    }
+    .message .time-status .read-status {
+      transition: color 0.3s;
+    }
+    .message .time-status .read-status.read { animation: checkmarkFade 0.3s forwards; }
+
+    /* Поле ввода сообщения */
+    #messageInputWrapper {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background-color: #f1f3f4;
+      border-radius: 24px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      z-index: 20;
+      margin: 0.5rem;
+    }
+    .dark #messageInputWrapper {
+      background-color: #2f3437;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    #fileInput { display: none; }
+    #attachButton {
+      background: none;
+      border: none;
+      padding: 0.5rem;
+      cursor: pointer;
+      color: #8696a0;
+      transition: color 0.2s;
+    }
+    #attachButton:hover { color: #0088cc; }
+    #messageInput {
+      flex: 1;
+      padding: 0.5rem;
+      border: none;
+      border-radius: 0.375rem;
+      outline: none;
+      background-color: transparent;
+      color: #1f2937;
+      font-size: 1rem;
+    }
+    .dark #messageInput { color: #d1d5db; }
+    #messageInput::placeholder { color: #8696a0; }
+    #sendButton {
+      display: none;
+      background: none;
+      border: none;
+      padding: 0.5rem;
+      cursor: pointer;
+      color: #0088cc;
+      transition: color 0.2s;
+    }
+    #sendButton.active { display: block; }
+    #sendButton:hover { color: #006699; }
+
+    /* Логи */
+    .console {
+      background-color: #e5e7eb;
+      padding: 0.5rem;
+      font-size: 0.875rem;
+      font-family: monospace;
+      max-height: 10rem;
+      overflow-y: auto;
+      margin: 1rem 0.5rem 0.5rem;
+      border-radius: 0.375rem;
+    }
+    .dark .console { background-color: #4b5563; }
+
+    /* Управление видимостью секций */
+    #auth { display: none; }
+    #auth.active { display: block; }
+    #userSelect { display: none; }
+    #userSelect.active { display: block; }
+    #chat { display: none; flex-direction: column; height: 100vh; }
+    #chat.active { display: flex; }
+    #messages {
+      flex-grow: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    .chat-footer {
+      position: sticky;
+      bottom: 0;
+      background: inherit;
+      padding: 0.5rem;
+      z-index: 20;
+    }
+
+    /* Убираем зазоры между userSelect и chat */
+    body { margin: 0; }
+    #userSelect, #chat { margin: 0; padding: 0; }
+    #userSelect { border-right: 1px solid #e5e7eb; }
+    .dark #userSelect { border-right: 1px solid #374151; }
+  </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col md:flex-row md:gap-0">
+  <!-- Секция авторизации -->
+  <div id="auth" class="w-full max-w-md mx-auto p-4 active">
+    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+      <h2 class="text-2xl font-bold mb-4">Регистрация</h2>
+      <input id="regUsername" placeholder="Логин" class="w-full p-2 mb-4 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+      <input id="regPassword" type="password" placeholder="Пароль" class="w-full p-2 mb-4 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+      <button onclick="register()" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Зарегистрироваться</button>
+      <hr class="my-4">
+      <h2 class="text-2xl font-bold mb-4">Вход</h2>
+      <input id="logUsername" placeholder="Логин" class="w-full p-2 mb-4 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+      <input id="logPassword" type="password" placeholder="Пароль" class="w-full p-2 mb-4 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+      <button onclick="login()" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600">Войти</button>
+      <div id="authError" class="text-red-500 mt-4"></div>
+    </div>
+  </div>
+  <!-- Секция выбора пользователя -->
+  <aside id="userSelect" class="w-full md:w-[35%] bg-white dark:bg-gray-800 flex flex-col">
+    <div class="flex items-center mb-4 p-4">
+      <button onclick="toggleMenu()" class="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+      </button>
+      <h2 class="text-xl font-bold ml-4">Чаты</h2>
+      <div id="hamburgerMenu" class="hidden absolute top-12 left-4 bg-white dark:bg-gray-800 shadow-lg rounded-lg p-4 z-10">
+        <button onclick="toggleTheme()" class="w-full text-left p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center">
+          <svg id="themeIcon" class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707m12.728-12.728l-.707-.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+          Изменить тему
+        </button>
+        <button onclick="backToAuth()" class="w-full text-left p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center">
+          <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg>
+          Выйти
+        </button>
+      </div>
+    </div>
+    <ul id="usersList" class="space-y-2 flex-1 px-4"></ul>
+    <div id="console" class="console"></div>
+  </aside>
+  <!-- Секция чата -->
+  <main id="chat" class="flex-1 flex flex-col">
+    <div class="w-full bg-gray-50 dark:bg-gray-900 p-4 flex flex-col h-full">
+      <div class="flex justify-between items-center mb-4 gap-2 flex-wrap w-full">
+        <h2 class="text-xl font-bold"><span id="currentRecipient"></span><span id="recipientStatus" class="text-sm ml-2"></span></h2>
+        <button onclick="backToUserSelect()" class="bg-gray-200 dark:bg-gray-700 p-2 rounded hover:bg-gray-300 dark:hover:bg-gray-600 md:hidden">Назад</button>
+      </div>
+      <div id="messages" class="relative flex-grow overflow-y-auto"></div>
+      <div class="chat-footer">
+        <div id="messageInputWrapper" class="relative w-full">
+          <input id="fileInput" type="file" accept="*/*" class="hidden">
+          <button id="attachButton" onclick="document.getElementById('fileInput').click()">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.586-6.586a4 4 0 00-5.656-5.656l-6.586 6.586a6 6 0 108.485 8.485L21.414 12"></path>
+            </svg>
+          </button>
+          <input id="messageInput" type="text" placeholder="Введите сообщение..." class="w-full p-2 pl-10 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100">
+          <button id="sendButton" class="absolute right-2 top-1/2 transform -translate-y-1/2">
+            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div id="contextMenu" class="hidden absolute bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6 z-10 w-40">
+      <button onclick="contextEdit()" class="w-full text-left p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center text-base">
+        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+        Редактировать
+      </button>
+      <button onclick="contextDelete()" class="w-full text-left p-3 rounded hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center text-base">
+        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4m-4 0h4m-7 4h10"></path></svg>
+        Удалить
+      </button>
+    </div>
+  </main>
+  <div id="notifications" class="fixed bottom-16 right-4 space-y-2 z-1000"></div>
+  <audio id="notificationSound" src="https://freesound.org/data/previews/339/339810_5121236-lq.mp3"></audio>
+<script>
+  (function loadSocketIO() {
+    const script = document.createElement('script');
+    script.src = 'http://localhost:5000/socket.io/socket.io.js';
+    script.onload = () => log('Socket.io загружен');
+    script.onerror = () => error('Не удалось загрузить socket.io');
+    document.head.appendChild(script);
+  })();
+  const API_URL = 'http://localhost:5000';
+  const consoleDiv = document.querySelector('#console.console');
+  let usersStatus = new Map(), typingTimeouts = new Map(), currentUser = null, selectedUser = null, token = null, socket = null, typingMessage = null, typingTimeout = null, observer = null, editingMessageId = null, unreadCount = 0, contextMessageId = null, contextMessageType = null, contextMessageContent = null, contextMessageFileName = null;
+
+  // Функции логирования
+  function log(msg) {
+    if (!consoleDiv) { console.error('Элемент .console не найден'); return; }
+    consoleDiv.innerHTML += `<div>[${new Date().toISOString()}] ${msg}</div>`;
+    consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    console.log('Лог:', msg);
+  }
+  function error(msg) {
+    if (!consoleDiv) { console.error('Элемент .console не найден'); return; }
+    consoleDiv.innerHTML += `<div class="text-red-500">[${new Date().toISOString()}] Ошибка: ${msg}</div>`;
+    consoleDiv.scrollTop = consoleDiv.scrollHeight;
+    console.error(msg);
+  }
+
+  function toggleTheme() {
+    const theme = localStorage.getItem('theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.classList.toggle('dark');
+    localStorage.setItem('theme', theme);
+    document.getElementById('themeIcon').innerHTML = theme === 'dark' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 01 8.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>' : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707m12.728-12.728l-.707-.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
+    log(`Тема переключена на: ${theme}`);
+  }
+  function toggleMenu() {
+    const menu = document.getElementById('hamburgerMenu');
+    menu.classList.toggle('hidden');
+    document.getElementById('contextMenu').classList.add('hidden');
+    log(`Меню ${menu.classList.contains('hidden') ? 'скрыто' : 'показано'}`);
+  }
+  function showContextMenu(event, messageId, type, content, fileName) {
+    if (!token) { error('Попытка открытия контекстного меню без токена'); backToAuth(); return; }
+    const messageDiv = event.target.closest('.message.bg-blue-500');
+    if (!messageDiv || messageDiv.closest('.message-container').dataset.id !== messageId) return;
+    event.preventDefault();
+    contextMessageId = messageId;
+    contextMessageType = type;
+    contextMessageContent = content;
+    contextMessageFileName = fileName;
+    const contextMenu = document.getElementById('contextMenu');
+    const menuWidth = 160; // w-40 в пикселях
+    const menuHeight = 100; // Примерная высота меню
+    let x = event.clientX;
+    let y = event.clientY;
+    // Корректировка позиции, чтобы меню не выходило за пределы экрана
+    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 5;
+    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 5;
+    if (x < 0) x = 5;
+    if (y < 0) y = 5;
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.classList.remove('hidden');
+    document.getElementById('hamburgerMenu').classList.add('hidden');
+    log(`Контекстное меню открыто для сообщения: ${messageId}`);
+  }
+  function hideContextMenu() {
+    const contextMenu = document.getElementById('contextMenu');
+    contextMenu.classList.add('hidden');
+    contextMessageId = null;
+    contextMessageType = null;
+    contextMessageContent = null;
+    contextMessageFileName = null;
+    log('Контекстное меню скрыто');
+  }
+  function contextEdit() {
+    if (contextMessageId) startEditing(contextMessageId, contextMessageType, contextMessageContent, contextMessageFileName);
+    hideContextMenu();
+  }
+  function contextDelete() {
+    if (contextMessageId) deleteMessage(contextMessageId);
+    hideContextMenu();
+  }
+  function formatLastSeen(date) {
+    if (!date) return '';
+    const now = new Date(), lastSeen = new Date(date), diffMs = now - lastSeen, diffDays = Math.floor(diffMs / (1000*60*60*24));
+    const hours = lastSeen.getHours().toString().padStart(2,'0'), minutes = lastSeen.getMinutes().toString().padStart(2,'0'), timeStr = `${hours}:${minutes}`;
+    return diffDays === 0 ? `сегодня в ${timeStr}` : diffDays === 1 ? `вчера в ${timeStr}` : `${lastSeen.getDate().toString().padStart(2,'0')}.${(lastSeen.getMonth()+1).toString().padStart(2,'0')}.${lastSeen.getFullYear()} в ${timeStr}`;
+  }
+  function updateRecipientStatus(username) {
+    const statusSpan = document.getElementById('recipientStatus'), user = usersStatus.get(username);
+    if (user) {
+      statusSpan.textContent = user.online ? 'Онлайн' : `Был в сети ${formatLastSeen(user.lastSeen)}`;
+      statusSpan.className = `text-sm ml-2 ${user.online ? 'text-green-500' : 'text-gray-500'}`;
+      log(`Статус ${username}: ${statusSpan.textContent}`);
+    } else { statusSpan.textContent = ''; log(`Статус ${username}: Неизвестен`); }
+  }
+  function showNotification(sender, content, type, fileName) {
+    const notificationsDiv = document.getElementById('notifications'), notification = document.createElement('div');
+    notification.className = 'notification bg-gray-800 text-white p-3 rounded shadow';
+    const shortContent = type === 'text' ? (content.length > 50 ? content.substring(0,50)+'...' : content) : fileName || type;
+    notification.innerHTML = `<strong>${sender}</strong>: ${shortContent}`;
+    notification.onclick = () => { notification.style.animation = 'slideOut 0.3s ease-out'; setTimeout(() => notification.remove(), 300); log(`Уведомление от ${sender} закрыто`); };
+    notificationsDiv.appendChild(notification);
+    log(`Уведомление: ${sender}: ${shortContent}`);
+    document.getElementById('notificationSound').play().then(() => log('Звук уведомления')).catch(err => error(`Ошибка звука: ${err.message}`));
+    setTimeout(() => { if (notification.parentNode) { notification.style.animation = 'slideOut 0.3s ease-out'; setTimeout(() => notification.remove(), 300); log(`Уведомление от ${sender} закрыто`); } }, 5000);
+  }
+  function initSocket() {
+    if (!token) { error('Токен отсутствует'); return false; }
+    if (typeof io === 'undefined') { error('Socket.io не загружен'); return false; }
+    log('Инициализация WebSocket');
+    socket = io(API_URL, { auth: { token }, reconnectionAttempts: 3 });
+    socket.on('connect', () => { log('WebSocket подключён'); socket.emit('authenticate', token); });
+    socket.on('connect_error', err => error(`WebSocket ошибка: ${err.message}`));
+    socket.on('new-message', message => {
+      if (!token) { error('Получено сообщение без токена'); backToAuth(); return; }
+      if ((message.sender === currentUser && message.recipient === selectedUser) || (message.sender === selectedUser && message.recipient === currentUser)) {
+        if (typingMessage) { typingMessage.remove(); typingMessage = null; }
+        renderMessage(message);
+      }
+      if (message.recipient === currentUser && !message.read && message.sender !== selectedUser && !message.deleted) {
+        unreadCount++; updateTitle();
+        showNotification(message.sender, message.content, message.type, message.fileName);
+        loadUsers();
+      }
+    });
+    socket.on('typing', data => {
+      if (!token) { error('Получено событие typing без токена'); backToAuth(); return; }
+      if (!data.sender || !data.recipient) return;
+      if (data.recipient === currentUser) {
+        const li = document.querySelector(`#usersList li[data-username="${data.sender}"]`);
+        if (li) {
+          const typingStatus = li.querySelector('.typing-status'), lastMessage = li.querySelector('.last-message');
+          typingStatus.classList.remove('hidden'); lastMessage.classList.add('hidden');
+          if (typingTimeouts.has(data.sender)) clearTimeout(typingTimeouts.get(data.sender));
+          typingTimeouts.set(data.sender, setTimeout(() => { typingStatus.classList.add('hidden'); lastMessage.classList.remove('hidden'); typingTimeouts.delete(data.sender); }, 3000));
+        }
+        if (data.sender === selectedUser) {
+          const messagesDiv = document.getElementById('messages');
+          if (typingMessage) typingMessage.remove();
+          typingMessage = document.createElement('div');
+          typingMessage.className = 'typing text-gray-500 italic p-2 mr-auto max-w-[80%]';
+          typingMessage.textContent = `${selectedUser} печатает`;
+          messagesDiv.appendChild(typingMessage);
+          messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          if (typingTimeout) clearTimeout(typingTimeout);
+          typingTimeout = setTimeout(() => { if (typingMessage) { typingMessage.remove(); typingMessage = null; } }, 3000);
+        }
+      }
+    });
+    socket.on('message-read', ({ messageId, sender, recipient }) => {
+      if (!token) { error('Получено событие message-read без токена'); backToAuth(); return; }
+      if ((sender === currentUser && recipient === selectedUser) || (sender === selectedUser && recipient === currentUser)) {
+        const messageDiv = document.querySelector(`[data-id="${messageId}"]`);
+        if (messageDiv) {
+          const readStatus = messageDiv.querySelector('.read-status');
+          readStatus.textContent = '✓✓';
+          readStatus.classList.add('read');
+        }
+      }
+      if (recipient === currentUser) { unreadCount = Math.max(0, unreadCount - 1); updateTitle(); loadUsers(); }
+    });
+    socket.on('message-deleted', ({ messageId, sender, recipient }) => {
+      if (!token) { error('Получено событие message-deleted без токена'); backToAuth(); return; }
+      if ((sender === currentUser && recipient === selectedUser) || (sender === selectedUser && recipient === currentUser)) {
+        const messageDiv = document.querySelector(`[data-id="${messageId}"]`);
+        if (messageDiv) {
+          messageDiv.className = `message-container ${sender === currentUser ? 'sender' : 'recipient'} deleted`;
+          messageDiv.innerHTML = `<div class="${sender === currentUser ? 'avatar-wrapper sender' : 'avatar-wrapper'}"><img class="avatar" src="default-avatar.png"></div><div class="message p-2 rounded-lg bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100">Сообщение удалено</div><div class="time-status"><span class="time">${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span></div>`;
+          document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+        }
+      }
+      if (recipient === currentUser) loadUsers();
+    });
+    socket.on('message-edited', ({ messageId, sender, recipient, content, type, mimeType, fileName, edited }) => {
+      if (!token) { error('Получено событие message-edited без токена'); backToAuth(); return; }
+      if ((sender === currentUser && recipient === selectedUser) || (sender === selectedUser && recipient === currentUser)) {
+        const messageDiv = document.querySelector(`[data-id="${messageId}"]`);
+        if (messageDiv) { renderMessage({ _id: messageId, sender, recipient, content, type, mimeType, fileName, edited, read: messageDiv.querySelector('.read-status')?.textContent.includes('✓✓') }); }
+      }
+      if (recipient === currentUser) loadUsers();
+    });
+    socket.on('user-status', ({ username, online, lastSeen }) => {
+      if (!token) { error('Получено событие user-status без токена'); backToAuth(); return; }
+      usersStatus.set(username, { online, lastSeen });
+      if (username === selectedUser) updateRecipientStatus(username);
+      loadUsers();
+    });
+    socket.on('error', err => error(`Socket ошибка: ${err.message}`));
+    return true;
+  }
+  function updateTitle() { document.title = unreadCount > 0 ? `(${unreadCount}) Чат` : 'Чат'; }
+  async function checkServer() {
+    try {
+      const res = await fetch(`${API_URL}/health`);
+      const data = await res.json();
+      log(`Сервер: ${data.status}, MongoDB: ${data.mongodb}`);
+    } catch (err) {
+      error(`Сервер недоступен: ${err.message}`);
+      alert('Сервер недоступен');
+    }
+  }
+  async function checkAuth() {
+    if (!token) return false;
+    try {
+      const res = await fetch(`${API_URL}/api/check-auth`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      console.log('checkAuth response:', data);
+      if (!res.ok) throw new Error(data.message || 'Ошибка авторизации');
+      currentUser = data.username;
+      log(`Авторизация: ${currentUser}`);
+      return true;
+    } catch (err) {
+      error(`Ошибка авторизации: ${err.message}`);
+      localStorage.removeItem('token');
+      token = null;
+      return false;
+    }
+  }
+  async function register() {
+    clearAuthError();
+    const username = document.getElementById('regUsername').value.trim(),
+          password = document.getElementById('regPassword').value.trim();
+    if (!username || !password) {
+      showAuthError('Введите логин и пароль');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      console.log('register response:', data);
+      if (!res.ok) throw new Error(data.message || 'Ошибка регистрации');
+      log('Регистрация успешна');
+      alert('Регистрация успешна! Войдите.');
+      document.getElementById('regUsername').value = '';
+      document.getElementById('regPassword').value = '';
+    } catch (err) {
+      showAuthError(err.message);
+      error(`Регистрация ошибка: ${err.message}`);
+    }
+  }
+  async function login() {
+    clearAuthError();
+    const username = document.getElementById('logUsername').value.trim(),
+          password = document.getElementById('logPassword').value.trim();
+    if (!username || !password) {
+      showAuthError('Введите логин и пароль');
+      log('Ошибка входа: логин или пароль пусты');
+      return;
+    }
+    try {
+      console.log('Отправка запроса на вход:', { username });
+      const res = await fetch(`${API_URL}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const data = await res.json();
+      console.log('Ответ сервера:', data);
+      if (!res.ok) throw new Error(data.message || 'Ошибка входа');
+      currentUser = data.username;
+      token = data.token;
+      localStorage.setItem('token', token);
+      log(`Вход: ${currentUser}`);
+      document.getElementById('auth').classList.remove('active');
+      document.getElementById('auth').classList.add('hidden');
+      document.getElementById('userSelect').classList.remove('hidden');
+      document.getElementById('userSelect').classList.add('active');
+      document.getElementById('chat').classList.add('hidden');
+      document.getElementById('messageInputWrapper').style.display = 'none';
+      if (initSocket()) await loadUsers();
+    } catch (err) {
+      showAuthError(err.message);
+      error(`Вход ошибка: ${err.message}`);
+    }
+  }
+  async function loadUsers() {
+    if (!token) {
+      error('Попытка загрузки пользователей без токена');
+      backToAuth();
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/users`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      console.log('loadUsers response:', data);
+      if (!res.ok) throw new Error(data.message || 'Ошибка загрузки');
+      const usersList = document.getElementById('usersList');
+      if (!usersList) { error('Элемент #usersList не найден'); return; }
+      usersList.innerHTML = '';
+      if (data.length === 0) {
+        log('Нет пользователей');
+        alert('Нет пользователей');
+        return;
+      }
+      unreadCount = data.reduce((sum, user) => sum + user.unread, 0);
+      updateTitle();
+      data.forEach(user => {
+        usersStatus.set(user.username, { online: user.online, lastSeen: user.lastSeen });
+        const lastMessageText = user.lastMessage
+          ? (user.lastMessage.deleted
+              ? 'Сообщение удалено'
+              : user.lastMessage.type === 'text'
+              ? `${user.lastMessage.content.substring(0, 30)}${user.lastMessage.content.length > 30 ? '...' : ''}${user.lastMessage.edited ? ' (Отред.)' : ''}`
+              : user.lastMessage.fileName || user.lastMessage.type)
+          : 'Нет сообщений';
+        const li = document.createElement('li');
+        li.dataset.username = user.username;
+        li.className = `p-3 rounded cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 ${selectedUser === user.username ? 'bg-gray-100 dark:bg-gray-700' : ''}`;
+        li.innerHTML = `<div class="flex items-center"><div class="relative"><img class="avatar mr-4" src="default-avatar.png"><span class="online-status absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full ${user.online ? 'animate-pulse' : 'hidden'}"></span></div><div><div class="font-bold">${user.username}${user.unread > 0 ? `<span class="unread-count text-red-500 ml-2">(${user.unread})</span>` : ''}</div><span class="typing-status hidden text-red-500 italic text-sm">Печатает...</span><span class="last-message text-gray-500 text-sm">${lastMessageText}</span></div></div>`;
+        li.onclick = () => {
+          if (!token) { error('Попытка открытия чата без токена'); backToAuth(); return; }
+          selectedUser = user.username;
+          document.getElementById('userSelect').classList.remove('hidden');
+          document.getElementById('userSelect').classList.add('active');
+          document.getElementById('chat').classList.remove('hidden');
+          document.getElementById('chat').classList.add('active');
+          document.getElementById('currentRecipient').textContent = selectedUser;
+          document.getElementById('messageInputWrapper').style.display = 'flex';
+          updateRecipientStatus(selectedUser);
+          loadMessages();
+          document.querySelectorAll('#usersList li').forEach(el => el.classList.remove('bg-gray-100', 'dark:bg-gray-700'));
+          li.classList.add('bg-gray-100', 'dark:bg-gray-700');
+          if (window.innerWidth < 768) document.getElementById('userSelect').classList.add('hidden');
+          document.getElementById('hamburgerMenu').classList.add('hidden');
+        };
+        usersList.appendChild(li);
+      });
+      log(`Загружено ${data.length} пользователей`);
+    } catch (err) {
+      error(`Ошибка загрузки пользователей: ${err.message}`);
+      if (err.message.includes('401')) backToAuth();
+    }
+  }
+  function renderMessage(m) {
+    const messagesDiv = document.getElementById('messages');
+    if (!messagesDiv) { error('Элемент #messages не найден'); return; }
+    const container = document.createElement('div');
+    container.className = `message-container ${m.sender === currentUser ? 'sender' : 'recipient'} ${m.type === 'image' || m.mimeType?.startsWith('image/') ? 'image' : ''} mb-4`;
+    container.dataset.id = m._id;
+    const avatarWrapper = document.createElement('div');
+    avatarWrapper.className = `avatar-wrapper ${m.sender === currentUser ? 'sender' : ''}`;
+    avatarWrapper.innerHTML = `<img class="avatar" src="default-avatar.png">`;
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message p-2 rounded-lg ${m.sender === currentUser ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-100'} relative`;
+    if (m.sender === currentUser && !m.deleted) {
+      messageDiv.oncontextmenu = (event) => showContextMenu(event, m._id, m.type, m.content, m.fileName);
+    }
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'inline-flex items-baseline';
+    const timeStatusDiv = document.createElement('div');
+    timeStatusDiv.className = 'time-status';
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'time';
+    timeSpan.textContent = new Date(m.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    const readStatus = document.createElement('span');
+    readStatus.className = 'read-status';
+    readStatus.textContent = m.sender === currentUser ? (m.read ? '✓✓' : '✓') : '';
+    if (m.read && m.sender === currentUser) readStatus.classList.add('read');
+    timeStatusDiv.appendChild(timeSpan);
+    timeStatusDiv.appendChild(readStatus);
+    if (m.deleted) {
+      messageDiv.textContent = 'Сообщение удалено';
+    } else if (m.type === 'text' || !m.mimeType) {
+      contentDiv.innerHTML = `${m.content}${m.edited ? '<span class="text-xs ml-2">(Отредактировано)</span>' : ''}`;
+      if (m.sender === currentUser) contentDiv.appendChild(timeStatusDiv);
+      messageDiv.appendChild(contentDiv);
+    } else {
+      const url = `data:${m.mimeType};base64,${m.content}`;
+      let element;
+      if (m.mimeType.startsWith('image/')) {
+        element = document.createElement('img');
+        element.src = url;
+        element.alt = m.fileName || 'Изображение';
+        element.className = 'w-full max-h-48 rounded';
+      } else if (m.mimeType.startsWith('video/')) {
+        element = document.createElement('video');
+        element.src = url;
+        element.controls = true;
+        element.className = 'w-full max-h-48 rounded';
+      } else if (m.mimeType.startsWith('audio/')) {
+        element = document.createElement('audio');
+        element.src = url;
+        element.controls = true;
+        element.className = 'w-full';
+      } else {
+        element = document.createElement('a');
+        element.href = url;
+        element.download = m.fileName || 'file';
+        element.textContent = m.fileName || 'Скачать файл';
+        element.className = 'underline';
+      }
+      contentDiv.appendChild(element);
+      if (m.edited) contentDiv.innerHTML += '<span class="text-xs ml-2">(Отредактировано)</span>';
+      if (m.sender === currentUser) contentDiv.appendChild(timeStatusDiv);
+      messageDiv.appendChild(contentDiv);
+    }
+    container.appendChild(avatarWrapper);
+    container.appendChild(messageDiv);
+    if (!m.deleted && m.sender !== currentUser) messageDiv.appendChild(timeStatusDiv);
+    messagesDiv.appendChild(container);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    if (m.sender === selectedUser && m.recipient === currentUser && !m.read && !m.deleted) observer.observe(container);
+  }
+  async function loadMessages() {
+    if (!token) {
+      error('Попытка загрузки сообщений без токена');
+      backToAuth();
+      return;
+    }
+    if (!selectedUser) {
+      error('Не выбран пользователь');
+      backToUserSelect();
+      return;
+    }
+    try {
+      const res = await fetch(`${API_URL}/api/messages/${encodeURIComponent(selectedUser)}?t=${Date.now()}`, { headers: { 'Authorization': `Bearer ${token}` } });
+      const data = await res.json();
+      console.log('loadMessages response:', data);
+      if (!res.ok) throw new Error(data.message || 'Ошибка загрузки');
+      const messagesDiv = document.getElementById('messages');
+      messagesDiv.innerHTML = '';
+      document.getElementById('messageInputWrapper').style.display = 'flex';
+      if (observer) observer.disconnect();
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && entry.target.querySelector('.message').classList.contains('bg-gray-200') && !entry.target.classList.contains('deleted') && !entry.target.querySelector('.read-status').textContent.includes('✓✓')) {
+            markMessageAsRead(entry.target.dataset.id);
+          }
+        });
+      }, { root: messagesDiv, threshold: 0.9 });
+      data.forEach(renderMessage);
+      log(`Загружено ${data.length} сообщений`);
+    } catch (err) {
+      error(`Ошибка загрузки сообщений: ${err.message}`);
+      if (err.message.includes('401')) backToAuth();
+    }
+  }
+  async function markMessageAsRead(messageId) {
+    if (!token) {
+      error('Попытка пометить сообщение прочитанным без токена');
+      backToAuth();
+      return;
+    }
+    if (!messageId) {
+      error('Ошибка: messageId отсутствует');
+      return;
+    }
+    try {
+      if (socket && socket.connected) socket.emit('read-message', { messageId });
+      else {
+        const res = await fetch(`${API_URL}/api/messages/${messageId}/read`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Ошибка прочтения');
+      }
+      log(`Сообщение ${messageId} прочитано`);
+    } catch (err) {
+      error(`Ошибка прочтения: ${err.message}`);
+    }
+  }
+  async function deleteMessage(messageId) {
+    if (!token) {
+      error('Попытка удаления сообщения без токена');
+      backToAuth();
+      return;
+    }
+    if (!messageId) {
+      error('Ошибка: messageId отсутствует');
+      alert('Идентификатор сообщения отсутствует');
+      return;
+    }
+    try {
+      if (socket && socket.connected) socket.emit('delete-message', { messageId });
+      else {
+        const res = await fetch(`${API_URL}/api/messages/${messageId}/delete`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Ошибка удаления');
+      }
+      log(`Сообщение удалено: ${messageId}`);
+    } catch (err) {
+      error(`Ошибка удаления: ${err.message}`);
+      alert(`Ошибка удаления: ${err.message}`);
+    }
+  }
+  async function startEditing(messageId, type, content, fileName) {
+    if (!token) {
+      error('Попытка редактирования сообщения без токена');
+      backToAuth();
+      return;
+    }
+    if (!messageId) {
+      error('Ошибка: messageId отсутствует');
+      alert('Идентификатор сообщения отсутствует');
+      return;
+    }
+    if (editingMessageId) cancelEditing(editingMessageId);
+    await loadMessages();
+    const messageDiv = document.querySelector(`[data-id="${messageId}"] .message`);
+    if (!messageDiv) {
+      error(`Сообщение ${messageId} не найдено`);
+      alert('Сообщение не найдено');
+      return;
+    }
+    if (messageDiv.closest('.message-container').classList.contains('deleted')) {
+      error(`Сообщение ${messageId} уже удалено`);
+      alert('Нельзя редактировать удалённое сообщение');
+      return;
+    }
+    if (!messageDiv.closest('.message-container').classList.contains('sender')) {
+      error(`Попытка редактирования чужого сообщения: ${messageId}`);
+      alert('Вы можете редактировать только свои сообщения');
+      return;
+    }
+    editingMessageId = messageId;
+    messageDiv.classList.add('edit-mode');
+    const timeStatusDiv = messageDiv.querySelector('.time-status');
+    const readStatus = timeStatusDiv?.querySelector('.read-status')?.textContent || '';
+    messageDiv.innerHTML = '';
+    if (type === 'text') {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'edit-input w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100';
+      input.value = content;
+      messageDiv.appendChild(input);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.className = 'edit-input w-full p-2';
+      input.accept = '*/*';
+      messageDiv.innerHTML = '<span class="flex-1"></span>';
+      messageDiv.appendChild(input);
+    }
+    if (timeStatusDiv) {
+      timeStatusDiv.innerHTML = `<span class="time">${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span><span class="read-status">${readStatus}</span>`;
+      messageDiv.appendChild(timeStatusDiv);
+    }
+    const buttonDiv = document.createElement('div');
+    buttonDiv.className = 'flex gap-2 mt-2 flex-shrink-0 w-full';
+    const saveButton = document.createElement('button');
+    saveButton.className = 'save-button bg-green-500 text-white px-2 py-1 rounded min-w-12 max-w-12 text-sm hover:bg-green-600 flex-shrink-0';
+    saveButton.textContent = 'Сохр.';
+    saveButton.onclick = () => saveEdit(messageId, type);
+    buttonDiv.appendChild(saveButton);
+    const cancelButton = document.createElement('button');
+    cancelButton.className = 'cancel-button bg-gray-500 text-white px-2 py-1 rounded min-w-12 max-w-12 text-sm hover:bg-gray-600 flex-shrink-0';
+    cancelButton.textContent = 'Отмена';
+    cancelButton.onclick = () => cancelEditing(messageId);
+    buttonDiv.appendChild(cancelButton);
+    messageDiv.appendChild(buttonDiv);
+    messageDiv.querySelector('.edit-input').focus();
+    log(`Начато редактирование: messageId=${messageId}, type=${type}`);
+  }
+  async function saveEdit(messageId, type) {
+    if (!token) {
+      error('Попытка сохранения редактирования без токена');
+      backToAuth();
+      return;
+    }
+    const messageDiv = document.querySelector(`[data-id="${messageId}"] .message`);
+    if (!messageDiv) {
+      error(`Сообщение ${messageId} не найдено`);
+      alert('Сообщение не найдено');
+      return;
+    }
+    const input = messageDiv.querySelector('.edit-input');
+    if (!input) {
+      error(`Поле ввода не найдено`);
+      return;
+    }
+    let content, mimeType, fileName;
+    if (type === 'text') {
+      content = input.value.trim();
+      if (!content) {
+        error('Пустое сообщение');
+        alert('Введите текст');
+        return;
+      }
+    } else {
+      const file = input.files[0];
+      if (!file) {
+        error('Файл не выбран');
+        alert('Выберите файл');
+        return;
+      }
+      if (file.size > 5*1024*1024) {
+        error(`Файл слишком большой: ${file.size}`);
+        alert('Файл слишком большой (макс. 5MB)');
+        return;
+      }
+      const uploadingDiv = document.createElement('div');
+      uploadingDiv.className = 'uploading text-gray-500 italic p-2';
+      uploadingDiv.textContent = 'Загрузка файла...';
+      messageDiv.appendChild(uploadingDiv);
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          content = reader.result.split(',')[1];
+          mimeType = file.type;
+          fileName = file.name;
+          await sendEdit(messageId, content, type, mimeType, fileName);
+          uploadingDiv.remove();
+        } catch (err) {
+          error(`Ошибка редактирования: ${err.message}`);
+          alert(`Ошибка: ${err.message}`);
+          uploadingDiv.remove();
+        }
+      };
+      reader.onerror = () => {
+        error('Ошибка чтения файла');
+        alert('Ошибка чтения файла');
+        uploadingDiv.remove();
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+    await sendEdit(messageId, content, type);
+  }
+  async function sendEdit(messageId, content, type, mimeType, fileName) {
+    if (!token) {
+      error('Попытка отправки редактирования без токена');
+      backToAuth();
+      return;
+    }
+    try {
+      if (socket && socket.connected) socket.emit('edit-message', { messageId, content, type, mimeType, fileName });
+      else {
+        const res = await fetch(`${API_URL}/api/messages/${messageId}/edit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ content, type, mimeType, fileName })
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Ошибка редактирования');
+      }
+      editingMessageId = null;
+      log(`Сообщение отредактировано: ${messageId}`);
+    } catch (err) {
+      error(`Ошибка редактирования: ${err.message}`);
+      alert(`Ошибка редактирования: ${err.message}`);
+    }
+  }
+  function cancelEditing(messageId) {
+    editingMessageId = null;
+    loadMessages();
+    log(`Отмена редактирования: ${messageId}`);
+  }
+  async function sendMessage() {
+    if (!token) {
+      error('Попытка отправки сообщения без токена');
+      backToAuth();
+      return;
+    }
+    const content = document.getElementById('messageInput').value.trim();
+    if (!content || !selectedUser) {
+      error('Отсутствует текст или получатель');
+      alert('Введите сообщение и выберите получателя');
+      return;
+    }
+    try {
+      if (socket && socket.connected) {
+        socket.emit('send-message', { recipient: selectedUser, content, type: 'text' });
+        document.getElementById('messageInput').value = '';
+        document.getElementById('sendButton').classList.remove('active');
+      } else {
+        const res = await fetch(`${API_URL}/api/message`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ recipient: selectedUser, content, type: 'text' })
+        });
+        if (!res.ok) throw new Error((await res.json()).message || 'Ошибка отправки');
+        document.getElementById('messageInput').value = '';
+        document.getElementById('sendButton').classList.remove('active');
+        await loadMessages();
+      }
+    } catch (err) {
+      error(`Ошибка отправки: ${err.message}`);
+      alert(`Ошибка отправки: ${err.message}`);
+    }
+  }
+  async function sendFile(file) {
+    if (!token) {
+      error('Попытка отправки файла без токена');
+      backToAuth();
+      return;
+    }
+    if (!selectedUser || !file) {
+      error('Не выбран получатель или файл');
+      alert('Выберите получателя и файл');
+      return;
+    }
+    if (file.size > 5*1024*1024) {
+      error('Файл слишком большой');
+      alert('Файл слишком большой (макс. 5MB)');
+      return;
+    }
+    const messagesDiv = document.getElementById('messages'),
+          uploadingDiv = document.createElement('div');
+    uploadingDiv.className = 'message-container sender mb-4';
+    uploadingDiv.innerHTML = `<div class="avatar-wrapper sender"><img class="avatar" src="default-avatar.png"></div><div class="message p-2 rounded-lg bg-blue-500 text-white">Загрузка файла...</div>`;
+    messagesDiv.appendChild(uploadingDiv);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const content = reader.result.split(',')[1],
+              mimeType = file.type,
+              fileName = file.name;
+        if (socket && socket.connected) socket.emit('send-message', { recipient: selectedUser, content, type: mimeType.split('/')[0], mimeType, fileName });
+        else {
+          const res = await fetch(`${API_URL}/api/message`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({ recipient: selectedUser, content, type: mimeType.split('/')[0], mimeType, fileName })
+          });
+          if (!res.ok) throw new Error((await res.json()).message || 'Ошибка отправки');
+          await loadMessages();
+        }
+      } catch (err) {
+        error(`Ошибка отправки файла: ${err.message}`);
+        alert(`Ошибка: ${err.message}`);
+      } finally {
+        uploadingDiv.remove();
+      }
+    };
+    reader.onerror = () => {
+      error('Ошибка чтения файла');
+      alert('Ошибка чтения файла');
+      uploadingDiv.remove();
+    };
+    reader.readAsDataURL(file);
+  }
+  function backToUserSelect() {
+    if (!token) {
+      error('Попытка возврата к выбору пользователя без токена');
+      backToAuth();
+      return;
+    }
+    document.getElementById('chat').classList.add('hidden');
+    document.getElementById('chat').classList.remove('active');
+    document.getElementById('userSelect').classList.remove('hidden');
+    document.getElementById('userSelect').classList.add('active');
+    document.getElementById('auth').classList.add('hidden');
+    document.getElementById('auth').classList.remove('active');
+    document.getElementById('messageInputWrapper').style.display = 'none';
+    selectedUser = null;
+    document.getElementById('currentRecipient').textContent = '';
+    document.getElementById('recipientStatus').textContent = '';
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('fileInput').value = '';
+    document.getElementById('messageInput').value = '';
+    document.getElementById('sendButton').classList.remove('active');
+    document.getElementById('hamburgerMenu').classList.add('hidden');
+    document.getElementById('contextMenu').classList.add('hidden');
+    if (typingMessage) typingMessage.remove();
+    if (typingTimeout) clearTimeout(typingTimeout);
+    if (observer) observer.disconnect();
+    editingMessageId = null;
+    contextMessageId = null;
+    contextMessageType = null;
+    contextMessageContent = null;
+    contextMessageFileName = null;
+    document.querySelectorAll('#usersList li').forEach(el => el.classList.remove('bg-gray-100', 'dark:bg-gray-700'));
+    log('Возврат к выбору пользователя');
+  }
+  function backToAuth() {
+    document.getElementById('auth').classList.remove('hidden');
+    document.getElementById('auth').classList.add('active');
+    document.getElementById('userSelect').classList.add('hidden');
+    document.getElementById('userSelect').classList.remove('active');
+    document.getElementById('chat').classList.add('hidden');
+    document.getElementById('chat').classList.remove('active');
+    document.getElementById('messageInputWrapper').style.display = 'none';
+    document.getElementById('usersList').innerHTML = '';
+    document.getElementById('messages').innerHTML = '';
+    document.getElementById('currentRecipient').textContent = '';
+    document.getElementById('recipientStatus').textContent = '';
+    document.getElementById('notifications').innerHTML = '';
+    document.getElementById('fileInput').value = '';
+    document.getElementById('messageInput').value = '';
+    document.getElementById('sendButton').classList.remove('active');
+    document.getElementById('hamburgerMenu').classList.add('hidden');
+    document.getElementById('contextMenu').classList.add('hidden');
+    if (consoleDiv) consoleDiv.innerHTML = '';
+    currentUser = null;
+    token = null;
+    selectedUser = null;
+    usersStatus.clear();
+    typingTimeouts.clear();
+    unreadCount = 0;
+    updateTitle();
+    if (socket) {
+      socket.disconnect();
+      socket = null;
+    }
+    if (observer) observer.disconnect();
+    editingMessageId = null;
+    contextMessageId = null;
+    contextMessageType = null;
+    contextMessageContent = null;
+    contextMessageFileName = null;
+    localStorage.removeItem('token');
+    log('Полный выход из аккаунта');
+  }
+  function showAuthError(msg) {
+    document.getElementById('authError').textContent = msg;
+  }
+  function clearAuthError() {
+    document.getElementById('authError').textContent = '';
+  }
+  document.getElementById('messageInput').addEventListener('input', (e) => {
+    if (socket && socket.connected && selectedUser && currentUser && token) socket.emit('typing', { sender: currentUser, recipient: selectedUser });
+    const sendButton = document.getElementById('sendButton');
+    if (e.target.value.trim()) {
+      sendButton.classList.add('active');
+    } else {
+      sendButton.classList.remove('active');
+    }
+  });
+  document.getElementById('messageInput').addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+  document.getElementById('sendButton').addEventListener('click', sendMessage);
+  document.getElementById('fileInput').addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      sendFile(file);
+      event.target.value = '';
+    }
+  });
+  window.addEventListener('click', (event) => {
+    const hamburgerMenu = document.getElementById('hamburgerMenu');
+    const menuButton = document.querySelector('#userSelect button[onclick="toggleMenu()"]');
+    const contextMenu = document.getElementById('contextMenu');
+    if (!hamburgerMenu.contains(event.target) && !menuButton.contains(event.target)) {
+      hamburgerMenu.classList.add('hidden');
+      log('Меню скрыто по клику вне');
+    }
+    if (!contextMenu.contains(event.target)) {
+      hideContextMenu();
+    }
+  });
+  window.addEventListener('contextmenu', (event) => {
+    const contextMenu = document.getElementById('contextMenu');
+    if (!contextMenu.contains(event.target) && !event.target.closest('.message.bg-blue-500')) {
+      hideContextMenu();
+    }
+  });
+  window.onload = () => {
+    log('Страница загружена');
+    log('Тестовый лог для проверки отображения');
+    document.getElementById('auth').classList.remove('hidden');
+    document.getElementById('auth').classList.add('active');
+    document.getElementById('userSelect').classList.add('hidden');
+    document.getElementById('userSelect').classList.remove('active');
+    document.getElementById('chat').classList.add('hidden');
+    document.getElementById('chat').classList.remove('active');
+    document.getElementById('messageInputWrapper').style.display = 'none';
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    document.documentElement.classList.remove('dark', 'light');
+    document.documentElement.classList.add(savedTheme);
+    document.getElementById('themeIcon').innerHTML = savedTheme === 'dark' ?
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 01 8.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>' :
+      '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707m12.728-12.728l-.707-.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>';
+    const savedToken = localStorage.getItem('token');
+    if (savedToken) {
+      token = savedToken;
+      checkAuth().then(authOk => {
+        if (authOk) {
+          document.getElementById('auth').classList.add('hidden');
+          document.getElementById('auth').classList.remove('active');
+          document.getElementById('userSelect').classList.remove('hidden');
+          document.getElementById('userSelect').classList.add('active');
+          document.getElementById('chat').classList.add('hidden');
+          document.getElementById('chat').classList.remove('active');
+          document.getElementById('messageInputWrapper').style.display = 'none';
+          if (initSocket()) loadUsers();
+        } else {
+          localStorage.removeItem('token');
+          token = null;
+          backToAuth();
+        }
+      });
+    }
+    checkServer();
+  };
+</script>
+</body>
+</html>
